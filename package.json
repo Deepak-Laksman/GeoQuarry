@@ -1,0 +1,16 @@
+{
+  "name": "geoquarry",
+  "version": "1.0.0",
+  "description": "A truly persistent on-disk QuadTree spatial database using LevelDB.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node cli.js"
+  },
+  "dependencies": {
+    "level": "^8.0.0",
+    "uuid": "^9.0.0"
+  },
+  "keywords": ["quadtree", "spatial", "database", "leveldb", "geospatial"],
+  "author": "Deepak Laksman",
+  "license": "MIT"
+}
