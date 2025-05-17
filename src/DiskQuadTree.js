@@ -1,4 +1,4 @@
-const { Level } = require('level');
+const level = require('level');
 const { v4: uuidv4 } = require('uuid');
 const { Rectangle, Point } = require('./Geometry');
 
@@ -10,7 +10,7 @@ class DiskQuadTree {
   }
 
   static async init(path, boundary, capacity = 4) {
-    const db = new Level(path, { valueEncoding: 'json' });
+    const db = level(path, { valueEncoding: 'json' });
     let rootId;
     try {
       rootId = await db.get('meta:root');
@@ -27,8 +27,8 @@ class DiskQuadTree {
     return new DiskQuadTree(db, rootId, capacity);
   }
 
-  async insert(x, y, data) {
-    const point = new Point(x, y, data);
+  async insert(x, y, jsonData) {
+    const point = new Point(x, y, jsonData);
     await this._insert(this.rootId, point);
   }
 
@@ -124,6 +124,84 @@ class DiskQuadTree {
       return da - db;
     });
     return candidates[0] || null;
+  }
+
+  // New update function to modify existing point's JSON data
+  async update(x, y, newJsonData) {
+    const point = await this._findPoint(this.rootId, x, y);
+    if (!point) {
+      throw new Error('Point not found');
+    }
+
+    point.data = newJsonData;
+    await this._updateNode(point.x, point.y, newJsonData);
+    return true;
+  }
+
+  // Helper to find a point by coordinates (x, y)
+  async _findPoint(nodeId, x, y) {
+    const node = await this.db.get(`node:${nodeId}`);
+    const boundary = new Rectangle(
+      node.boundary.x, node.boundary.y,
+      node.boundary.w, node.boundary.h
+    );
+
+    if (!boundary.contains(new Point(x, y))) return null;
+
+    for (const p of node.points) {
+      if (p.x === x && p.y === y) {
+        return p;
+      }
+    }
+
+    if (node.divided) {
+      for (const dir of ['ne', 'nw', 'se', 'sw']) {
+        const point = await this._findPoint(node.children[dir], x, y);
+        if (point) return point;
+      }
+    }
+
+    return null;
+  }
+
+  // Helper to update the point's data inside its corresponding node
+  async _updateNode(x, y, newJsonData) {
+    const nodeId = await this._findNodeId(x, y);
+    const node = await this.db.get(`node:${nodeId}`);
+
+    const pointIndex = node.points.findIndex(p => p.x === x && p.y === y);
+    if (pointIndex !== -1) {
+      node.points[pointIndex].data = newJsonData;
+      await this.db.put(`node:${nodeId}`, node);
+    }
+  }
+
+  // Helper to find the nodeId by point's (x, y) coordinates
+  async _findNodeId(x, y) {
+    const node = await this.db.get(`node:${this.rootId}`);
+    return await this._findNodeIdRecursive(node, x, y);
+  }
+
+  async _findNodeIdRecursive(node, x, y) {
+    const boundary = new Rectangle(
+      node.boundary.x, node.boundary.y,
+      node.boundary.w, node.boundary.h
+    );
+
+    if (!boundary.contains(new Point(x, y))) return null;
+
+    if (node.points.some(p => p.x === x && p.y === y)) {
+      return node.id;
+    }
+
+    if (node.divided) {
+      for (const dir of ['ne', 'nw', 'se', 'sw']) {
+        const childNodeId = await this._findNodeIdRecursive(node.children[dir], x, y);
+        if (childNodeId) return childNodeId;
+      }
+    }
+
+    return null;
   }
 }
 
